@@ -25,16 +25,16 @@ jobs:
           docker build -t strapi-app:latest .
 
       - name: Login to ECR
-        run: |
+        run: 
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
           docker login --username AWS --password-stdin <YOUR_ECR_URI>
 
       - name: Tag & Push Docker image
-        run: |
+        run: 
           docker tag strapi-app:latest <YOUR_ECR_URI>:latest
           docker push <YOUR_ECR_URI>:latest
 
       - name: Terraform Init & Apply
-        run: |
+        run: 
           terraform init
           terraform apply -auto-approve
