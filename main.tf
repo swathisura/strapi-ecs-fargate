@@ -63,7 +63,7 @@ data "aws_iam_role" "ecs_task_execution_role" {
 # CREATE ECR REPOSITORY
 # -------------------------------
 resource "aws_ecr_repository" "strapi_repo" {
-  name                 = "strapi-app"
+  name                 = "strapi-ecs"
   image_tag_mutability = "MUTABLE"
   scan_on_push         = true
 }
@@ -101,5 +101,34 @@ resource "aws_ecs_task_definition" "strapi_task" {
         }
       ]
 
-      logConf
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.strapi_log_group.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "ecs/strapi"
+        }
+      }
+    }
+  ])
+}
+
+# -------------------------------
+# ECS SERVICE (FARGATE)
+# -------------------------------
+resource "aws_ecs_service" "strapi_service" {
+  name            = "strapi-service"
+  cluster         = aws_ecs_cluster.strapi_cluster.id
+  task_definition = aws_ecs_task_definition.strapi_task.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = local.subnet_ids
+    security_groups = [data.aws_security_group.strapi_sg.id]
+    assign_public_ip = true
+  }
+
+  depends_on = [aws_ecs_task_definition.strapi_task]
+}
 
