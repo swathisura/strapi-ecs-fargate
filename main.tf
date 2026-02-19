@@ -53,27 +53,29 @@ resource "aws_ecs_cluster" "strapi_cluster" {
 }
 
 # -------------------------------
-# ECS TASK EXECUTION ROLE
+# IAM ROLE (assumes existing ECS execution role)
 # -------------------------------
 data "aws_iam_role" "ecs_task_execution_role" {
   name = "ecs-task-execution-role"
 }
 
 # -------------------------------
-# CREATE ECR REPOSITORY
+# ECR REPOSITORY
 # -------------------------------
 resource "aws_ecr_repository" "strapi_repo" {
   name                 = "strapi-ecs"
   image_tag_mutability = "MUTABLE"
-  scan_on_push         = true
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
 }
 
 # -------------------------------
 # CLOUDWATCH LOG GROUP
 # -------------------------------
-resource "aws_cloudwatch_log_group" "strapi_log_group" {
+resource "aws_cloudwatch_log_group" "strapi_logs" {
   name              = "/ecs/strapi"
-  retention_in_days = 14
+  retention_in_days = 7
 }
 
 # -------------------------------
@@ -91,7 +93,7 @@ resource "aws_ecs_task_definition" "strapi_task" {
   container_definitions = jsonencode([
     {
       name      = "strapi-app"
-      image     = "${aws_ecr_repository.strapi_repo.repository_url}:${var.docker_image_tag}"
+      image     = "${aws_ecr_repository.strapi_repo.repository_url}:latest"
       essential = true
 
       portMappings = [
@@ -104,9 +106,9 @@ resource "aws_ecs_task_definition" "strapi_task" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-group         = aws_cloudwatch_log_group.strapi_log_group.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs/strapi"
+          "awslogs-group"         = "/ecs/strapi"
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
         }
       }
     }
@@ -129,6 +131,5 @@ resource "aws_ecs_service" "strapi_service" {
     assign_public_ip = true
   }
 
-  depends_on = [aws_ecs_task_definition.strapi_task]
+  depends_on = [aws_cloudwatch_log_group.strapi_logs]
 }
-
