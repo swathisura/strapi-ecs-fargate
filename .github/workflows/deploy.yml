@@ -26,6 +26,7 @@ jobs:
       - name: Login to ECR
         run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_URI }}
 
+
       - name: Tag & Push Docker image
         run: 
           docker tag strapi-app:latest ${{ secrets.ECR_URI }}:latest
