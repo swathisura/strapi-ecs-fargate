@@ -10,9 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout repository
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      # Step 2: Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -20,20 +22,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # Step 3: Build Docker image
       - name: Build Docker image
         run: docker build -t strapi-app:latest .
 
+      # Step 4: Login to ECR
       - name: Login to ECR
         run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_URI }}
 
-
+      # Step 5: Tag & push Docker image
       - name: Tag & Push Docker image
         run: 
           docker tag strapi-app:latest ${{ secrets.ECR_URI }}:latest
           docker push ${{ secrets.ECR_URI }}:latest
 
+      # Step 6: Terraform init & apply
       - name: Terraform Init & Apply
         run: 
           terraform init
           terraform apply -auto-approve
+
 
