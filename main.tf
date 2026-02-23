@@ -3,14 +3,14 @@ provider "aws" {
 }
 
 # -------------------------------
-# EXISTING DEFAULT VPC
+# DEFAULT VPC
 # -------------------------------
 data "aws_vpc" "default" {
   default = true
 }
 
 # -------------------------------
-# EXISTING SUBNETS (from default VPC)
+# DEFAULT SUBNETS
 # -------------------------------
 data "aws_subnets" "default" {
   filter {
@@ -20,29 +20,27 @@ data "aws_subnets" "default" {
 }
 
 # -------------------------------
-# CREATE SUBNET IF NONE EXIST
+# SECURITY GROUP (CREATE)
 # -------------------------------
-resource "aws_subnet" "strapi_subnet" {
-  count                   = length(data.aws_subnets.default.ids) == 0 ? 1 : 0
-  vpc_id                  = data.aws_vpc.default.id
-  cidr_block              = cidrsubnet(data.aws_vpc.default.cidr_block, 8, 1)
-  availability_zone       = "${var.aws_region}a"
-  map_public_ip_on_launch = true
-}
+resource "aws_security_group" "strapi_sg" {
+  name        = "strapi-sg"
+  description = "Allow Strapi access"
+  vpc_id      = data.aws_vpc.default.id
 
-# -------------------------------
-# FINAL SUBNET IDS TO USE
-# -------------------------------
-locals {
-  subnet_ids = length(data.aws_subnets.default.ids) > 0 ? data.aws_subnets.default.ids : [aws_subnet.strapi_subnet[0].id]
-}
+  ingress {
+    description = "Strapi Port"
+    from_port   = 1337
+    to_port     = 1337
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-# -------------------------------
-# EXISTING SECURITY GROUP
-# -------------------------------
-data "aws_security_group" "strapi_sg" {
-  name   = "strapi-sg"
-  vpc_id = data.aws_vpc.default.id
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 # -------------------------------
@@ -53,7 +51,7 @@ resource "aws_ecs_cluster" "strapi_cluster" {
 }
 
 # -------------------------------
-# ECS TASK EXECUTION ROLE
+# IAM ROLE FOR ECS TASK
 # -------------------------------
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecs-task-execution-role"
@@ -61,29 +59,18 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action    = "sts:AssumeRole"
-      Effect    = "Allow"
+      Effect = "Allow"
       Principal = {
         Service = "ecs-tasks.amazonaws.com"
       }
+      Action = "sts:AssumeRole"
     }]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
+resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# -------------------------------
-# ECR REPOSITORY
-# -------------------------------
-resource "aws_ecr_repository" "strapi_repo" {
-  name                 = "strapi-ecs"
-  image_tag_mutability = "MUTABLE"
-  encryption_configuration {
-    encryption_type = "AES256"
-  }
 }
 
 # -------------------------------
@@ -95,7 +82,7 @@ resource "aws_cloudwatch_log_group" "strapi_logs" {
 }
 
 # -------------------------------
-# ECS TASK DEFINITION (FARGATE)
+# ECS TASK DEFINITION
 # -------------------------------
 resource "aws_ecs_task_definition" "strapi_task" {
   family                   = var.ecs_task_family
@@ -109,7 +96,7 @@ resource "aws_ecs_task_definition" "strapi_task" {
   container_definitions = jsonencode([
     {
       name      = "strapi-app"
-      image     = "${aws_ecr_repository.strapi_repo.repository_url}:latest"
+      image     = var.ecr_image_url
       essential = true
 
       portMappings = [
@@ -142,8 +129,8 @@ resource "aws_ecs_service" "strapi_service" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = local.subnet_ids
-    security_groups = [data.aws_security_group.strapi_sg.id]
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.strapi_sg.id]
     assign_public_ip = true
   }
 
