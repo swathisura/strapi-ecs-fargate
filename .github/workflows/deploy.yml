@@ -9,49 +9,51 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: us-east-1
+      ECR_URI: 811738710312.dkr.ecr.us-east-1.amazonaws.com/swathi-strapi
+
     steps:
-      # Step 1: Checkout the repo
+      # 1️⃣ Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: Configure AWS credentials
+      # 2️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Step 3: Build Docker image
+      # 3️⃣ Build Docker image
       - name: Build Docker image
         run: docker build -t strapi-app:latest .
 
-      # Step 4: Login to AWS ECR
+      # 4️⃣ Login to AWS ECR
       - name: Login to AWS ECR
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          ECR_URI: 811738710312.dkr.ecr.us-east-1.amazonaws.com/strapi-ecs
         run: |
-          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
+          aws ecr get-login-password --region $AWS_REGION \
+          | docker login --username AWS --password-stdin $ECR_URI
 
-      # Step 5: Tag and Push Docker image
-      - name: Tag & Push Docker image to ECR
-        env:
-          ECR_URI: 811738710312.dkr.ecr.us-east-1.amazonaws.com/strapi-ecs
+      # 5️⃣ Tag and Push Docker image
+      - name: Tag & Push Docker image
         run: |
           docker tag strapi-app:latest $ECR_URI:latest
           docker push $ECR_URI:latest
 
-      # Step 6: Setup Terraform
+      # 6️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.7.0
 
-      # Step 7: Terraform Init & Apply
-      - name: Terraform Init & Apply
-        run: |
-          terraform init
-          terraform apply -auto-approve
+      # 7️⃣ Terraform Init
+      - name: Terraform Init
+        run: terraform init
+
+      # 8️⃣ Terraform Apply
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
 
 
