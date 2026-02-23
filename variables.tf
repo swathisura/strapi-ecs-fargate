@@ -1,19 +1,19 @@
 variable "aws_region" {
-  type    = string
-  default = "us-east-1"
+  description = "AWS region"
+  type        = string
 }
 
 variable "ecs_cluster_name" {
-  type    = string
-  default = "strapi-cluster"
+  description = "ECS Cluster Name"
+  type        = string
 }
 
 variable "ecs_task_family" {
-  type    = string
-  default = "strapi-task"
+  description = "ECS Task Family"
+  type        = string
 }
 
-variable "docker_image_tag" {
-  type    = string
-  default = "latest"
+variable "ecr_image_url" {
+  description = "Full ECR image URL"
+  type        = string
 }
