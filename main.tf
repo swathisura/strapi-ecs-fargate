@@ -9,9 +9,6 @@ data "aws_vpc" "default" {
   default = true
 }
 
-# -------------------------------
-# DEFAULT SUBNETS
-# -------------------------------
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
@@ -24,12 +21,11 @@ locals {
 }
 
 # -------------------------------
-# SECURITY GROUP (CREATE)
+# SECURITY GROUP
 # -------------------------------
 resource "aws_security_group" "strapi_sg" {
-  name        = "strapi-sg"
-  description = "Allow Strapi access"
-  vpc_id      = data.aws_vpc.default.id
+  name   = "strapi-sg"
+  vpc_id = data.aws_vpc.default.id
 
   ingress {
     from_port   = 1337
@@ -54,7 +50,7 @@ resource "aws_ecs_cluster" "strapi_cluster" {
 }
 
 # -------------------------------
-# IAM ROLE FOR ECS TASK
+# IAM ROLE
 # -------------------------------
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecs-task-execution-role"
@@ -63,29 +59,19 @@ resource "aws_iam_role" "ecs_task_execution_role" {
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
       Action = "sts:AssumeRole"
     }]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_task_exec_policy" {
+resource "aws_iam_role_policy_attachment" "ecs_exec_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 # -------------------------------
-# EXISTING CLOUDWATCH LOG GROUP
-# (avoid already exists error)
-# -------------------------------
-data "aws_cloudwatch_log_group" "strapi_logs" {
-  name = "/ecs/strapi"
-}
-
-# -------------------------------
-# ECS TASK DEFINITION
+# ECS TASK
 # -------------------------------
 resource "aws_ecs_task_definition" "strapi_task" {
   family                   = var.ecs_task_family
@@ -108,15 +94,6 @@ resource "aws_ecs_task_definition" "strapi_task" {
           protocol      = "tcp"
         }
       ]
-
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = data.aws_cloudwatch_log_group.strapi_logs.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
     }
   ])
 }
