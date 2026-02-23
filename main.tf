@@ -3,14 +3,14 @@ provider "aws" {
 }
 
 # -------------------------------
-# USE EXISTING DEFAULT VPC
+# DEFAULT VPC
 # -------------------------------
 data "aws_vpc" "default" {
   default = true
 }
 
 # -------------------------------
-# USE EXISTING SUBNETS
+# DEFAULT SUBNETS
 # -------------------------------
 data "aws_subnets" "default" {
   filter {
@@ -20,7 +20,7 @@ data "aws_subnets" "default" {
 }
 
 # -------------------------------
-# USE EXISTING SECURITY GROUP
+# EXISTING SECURITY GROUP (shared account)
 # -------------------------------
 data "aws_security_group" "strapi_sg" {
   name   = "strapi-sg"
@@ -28,23 +28,17 @@ data "aws_security_group" "strapi_sg" {
 }
 
 # -------------------------------
-# ECS CLUSTER (safe to create)
+# ECS CLUSTER
 # -------------------------------
 resource "aws_ecs_cluster" "strapi_cluster" {
   name = var.ecs_cluster_name
 }
 
 # -------------------------------
-# CLOUDWATCH LOG GROUP
-# (Ignore errors if already exists)
+# EXISTING CLOUDWATCH LOG GROUP
 # -------------------------------
-resource "aws_cloudwatch_log_group" "strapi_logs" {
-  name              = "/ecs/strapi"
-  retention_in_days = 7
-
-  lifecycle {
-    ignore_changes = all
-  }
+locals {
+  log_group_name = "/ecs/strapi"
 }
 
 # -------------------------------
@@ -57,7 +51,7 @@ resource "aws_ecs_task_definition" "strapi_task" {
   cpu                      = "256"
   memory                   = "512"
 
-  # IMPORTANT: use existing execution role
+  # Use existing role (shared account)
   execution_role_arn = var.ecs_execution_role_arn
 
   container_definitions = jsonencode([
@@ -76,9 +70,9 @@ resource "aws_ecs_task_definition" "strapi_task" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-group         = "/ecs/strapi"
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
+          "awslogs-group"         = local.log_group_name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
         }
       }
     }
@@ -96,10 +90,8 @@ resource "aws_ecs_service" "strapi_service" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
-    security_groups  = [data.aws_security_group.strapi_sg.id]
+    subnets         = data.aws_subnets.default.ids
+    security_groups = [data.aws_security_group.strapi_sg.id]
     assign_public_ip = true
   }
-
-  depends_on = [aws_cloudwatch_log_group.strapi_logs]
 }
