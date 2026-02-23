@@ -1,15 +1,17 @@
 provider "aws" {
-  region = "us-east-1"
+  region = var.aws_region
 }
 
-# ----------------------------
-# Existing Infrastructure
-# ----------------------------
-
+# -------------------------------
+# DEFAULT VPC
+# -------------------------------
 data "aws_vpc" "default" {
   default = true
 }
 
+# -------------------------------
+# DEFAULT SUBNETS
+# -------------------------------
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
@@ -17,82 +19,79 @@ data "aws_subnets" "default" {
   }
 }
 
-# Use EXISTING security group (replace name if needed)
-data "aws_security_group" "existing" {
-  name   = "strapi-sg"
-  vpc_id = data.aws_vpc.default.id
-}
+# -------------------------------
+# SECURITY GROUP (CREATE IF NOT EXISTS)
+# -------------------------------
+resource "aws_security_group" "strapi_sg" {
+  name        = "strapi-sg"
+  description = "Allow Strapi traffic"
+  vpc_id      = data.aws_vpc.default.id
 
-# Use EXISTING IAM role (replace with real role name)
-data "aws_iam_role" "ecs_execution_role" {
-  name = "ecsTaskExecutionRole"
-}
+  ingress {
+    from_port   = 1337
+    to_port     = 1337
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-# ----------------------------
-# ECS Cluster
-# ----------------------------
-resource "aws_ecs_cluster" "strapi_cluster" {
-  name = "strapi-cluster"
-}
-
-# ----------------------------
-# CloudWatch Logs (skip creation if exists)
-# ----------------------------
-resource "aws_cloudwatch_log_group" "strapi_logs" {
-  name              = "/ecs/strapi"
-  retention_in_days = 7
-
-  lifecycle {
-    prevent_destroy = true
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
-# ----------------------------
-# Task Definition
-# ----------------------------
+# -------------------------------
+# ECS CLUSTER
+# -------------------------------
+resource "aws_ecs_cluster" "strapi_cluster" {
+  name = var.ecs_cluster_name
+}
+
+# -------------------------------
+# ECS TASK DEFINITION
+# -------------------------------
 resource "aws_ecs_task_definition" "strapi_task" {
-  family                   = "strapi-task"
-  requires_compatibilities = ["FARGATE"]
+  family                   = var.ecs_task_family
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = data.aws_iam_role.ecs_execution_role.arn
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
+
+  # USE EXISTING ROLE (IMPORTANT)
+  execution_role_arn = var.execution_role_arn
+  task_role_arn      = var.execution_role_arn
 
   container_definitions = jsonencode([
     {
-      name  = "strapi"
-      image = "YOUR_ECR_IMAGE_URI"
+      name      = "strapi-app"
+      image     = var.ecr_image_url
+      essential = true
+
       portMappings = [
         {
           containerPort = 1337
           protocol      = "tcp"
         }
       ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/strapi"
-          awslogs-region        = "us-east-1"
-          awslogs-stream-prefix = "ecs"
-        }
-      }
     }
   ])
 }
 
-# ----------------------------
-# ECS Service
-# ----------------------------
+# -------------------------------
+# ECS SERVICE
+# -------------------------------
 resource "aws_ecs_service" "strapi_service" {
   name            = "strapi-service"
   cluster         = aws_ecs_cluster.strapi_cluster.id
   task_definition = aws_ecs_task_definition.strapi_task.arn
-  launch_type     = "FARGATE"
   desired_count   = 1
+  launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = data.aws_subnets.default.ids
-    security_groups = [data.aws_security_group.existing.id]
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.strapi_sg.id]
     assign_public_ip = true
   }
 }
