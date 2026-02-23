@@ -1,19 +1,21 @@
 variable "aws_region" {
-  description = "AWS region"
-  type        = string
+  default = "us-east-1"
 }
 
 variable "ecs_cluster_name" {
-  description = "ECS Cluster Name"
-  type        = string
+  default = "strapi-cluster"
 }
 
 variable "ecs_task_family" {
-  description = "ECS Task Family"
-  type        = string
+  default = "strapi-task"
+}
+
+variable "execution_role_arn" {
+  description = "Existing ECS task role"
+  default     = "arn:aws:iam::811738710312:role/ecs_fargate_taskRole"
 }
 
 variable "ecr_image_url" {
-  description = "Full ECR image URL"
-  type        = string
+  description = "ECR image"
+  default     = "811738710312.dkr.ecr.us-east-1.amazonaws.com/swathi-strapi:latest"
 }
