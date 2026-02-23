@@ -1,10 +1,11 @@
 provider "aws" {
-  region = var.aws_region
+  region = "us-east-1"
 }
 
-# -------------------------------
-# DEFAULT VPC
-# -------------------------------
+# ----------------------------
+# Existing Infrastructure
+# ----------------------------
+
 data "aws_vpc" "default" {
   default = true
 }
@@ -16,101 +17,82 @@ data "aws_subnets" "default" {
   }
 }
 
-locals {
-  subnet_ids = data.aws_subnets.default.ids
-}
-
-# -------------------------------
-# SECURITY GROUP
-# -------------------------------
-resource "aws_security_group" "strapi_sg" {
+# Use EXISTING security group (replace name if needed)
+data "aws_security_group" "existing" {
   name   = "strapi-sg"
   vpc_id = data.aws_vpc.default.id
-
-  ingress {
-    from_port   = 1337
-    to_port     = 1337
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
-# -------------------------------
-# ECS CLUSTER
-# -------------------------------
+# Use EXISTING IAM role (replace with real role name)
+data "aws_iam_role" "ecs_execution_role" {
+  name = "ecsTaskExecutionRole"
+}
+
+# ----------------------------
+# ECS Cluster
+# ----------------------------
 resource "aws_ecs_cluster" "strapi_cluster" {
-  name = var.ecs_cluster_name
+  name = "strapi-cluster"
 }
 
-# -------------------------------
-# IAM ROLE
-# -------------------------------
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "ecs-task-execution-role"
+# ----------------------------
+# CloudWatch Logs (skip creation if exists)
+# ----------------------------
+resource "aws_cloudwatch_log_group" "strapi_logs" {
+  name              = "/ecs/strapi"
+  retention_in_days = 7
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = { Service = "ecs-tasks.amazonaws.com" }
-      Action = "sts:AssumeRole"
-    }]
-  })
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_exec_policy" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# -------------------------------
-# ECS TASK
-# -------------------------------
+# ----------------------------
+# Task Definition
+# ----------------------------
 resource "aws_ecs_task_definition" "strapi_task" {
-  family                   = var.ecs_task_family
-  network_mode             = "awsvpc"
+  family                   = "strapi-task"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
-
-  execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
+  network_mode             = "awsvpc"
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = data.aws_iam_role.ecs_execution_role.arn
 
   container_definitions = jsonencode([
     {
-      name      = "strapi-app"
-      image     = var.ecr_image_url
-      essential = true
-
+      name  = "strapi"
+      image = "YOUR_ECR_IMAGE_URI"
       portMappings = [
         {
           containerPort = 1337
           protocol      = "tcp"
         }
       ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/strapi"
+          awslogs-region        = "us-east-1"
+          awslogs-stream-prefix = "ecs"
+        }
+      }
     }
   ])
 }
 
-# -------------------------------
-# ECS SERVICE
-# -------------------------------
+# ----------------------------
+# ECS Service
+# ----------------------------
 resource "aws_ecs_service" "strapi_service" {
   name            = "strapi-service"
   cluster         = aws_ecs_cluster.strapi_cluster.id
   task_definition = aws_ecs_task_definition.strapi_task.arn
-  desired_count   = 1
   launch_type     = "FARGATE"
+  desired_count   = 1
 
   network_configuration {
-    subnets          = local.subnet_ids
-    security_groups  = [aws_security_group.strapi_sg.id]
+    subnets         = data.aws_subnets.default.ids
+    security_groups = [data.aws_security_group.existing.id]
     assign_public_ip = true
   }
 }
