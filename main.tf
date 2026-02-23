@@ -19,6 +19,10 @@ data "aws_subnets" "default" {
   }
 }
 
+locals {
+  subnet_ids = data.aws_subnets.default.ids
+}
+
 # -------------------------------
 # SECURITY GROUP (CREATE)
 # -------------------------------
@@ -28,7 +32,6 @@ resource "aws_security_group" "strapi_sg" {
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "Strapi Port"
     from_port   = 1337
     to_port     = 1337
     protocol    = "tcp"
@@ -68,17 +71,17 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
+resource "aws_iam_role_policy_attachment" "ecs_task_exec_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 # -------------------------------
-# CLOUDWATCH LOG GROUP
+# EXISTING CLOUDWATCH LOG GROUP
+# (avoid already exists error)
 # -------------------------------
-resource "aws_cloudwatch_log_group" "strapi_logs" {
-  name              = "/ecs/strapi"
-  retention_in_days = 7
+data "aws_cloudwatch_log_group" "strapi_logs" {
+  name = "/ecs/strapi"
 }
 
 # -------------------------------
@@ -109,9 +112,9 @@ resource "aws_ecs_task_definition" "strapi_task" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/strapi"
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "ecs"
+          awslogs-group         = data.aws_cloudwatch_log_group.strapi_logs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "ecs"
         }
       }
     }
@@ -119,7 +122,7 @@ resource "aws_ecs_task_definition" "strapi_task" {
 }
 
 # -------------------------------
-# ECS SERVICE (FARGATE)
+# ECS SERVICE
 # -------------------------------
 resource "aws_ecs_service" "strapi_service" {
   name            = "strapi-service"
@@ -129,10 +132,8 @@ resource "aws_ecs_service" "strapi_service" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = local.subnet_ids
     security_groups  = [aws_security_group.strapi_sg.id]
     assign_public_ip = true
   }
-
-  depends_on = [aws_cloudwatch_log_group.strapi_logs]
 }
