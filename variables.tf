@@ -10,12 +10,12 @@ variable "ecs_task_family" {
   default = "strapi-task"
 }
 
-variable "execution_role_arn" {
-  description = "Existing ECS task role"
-  default     = "arn:aws:iam::811738710312:role/ecs_fargate_taskRole"
+# EXISTING IAM ROLE IN YOUR ACCOUNT
+variable "ecs_execution_role_arn" {
+  default = "arn:aws:iam::811738710312:role/ecs_fargate_taskRole"
 }
 
+# YOUR ECR IMAGE
 variable "ecr_image_url" {
-  description = "ECR image"
-  default     = "811738710312.dkr.ecr.us-east-1.amazonaws.com/swathi-strapi:latest"
+  default = "811738710312.dkr.ecr.us-east-1.amazonaws.com/swathi-strapi:latest"
 }
